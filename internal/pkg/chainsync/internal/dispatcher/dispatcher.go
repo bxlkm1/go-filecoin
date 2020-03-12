@@ -114,6 +114,7 @@ func (d *Dispatcher) SendGossipBlock(ci *block.ChainInfo) error {
 }
 
 func (d *Dispatcher) enqueue(ci *block.ChainInfo) error {
+	log.Infof("enqueing %v %d", ci.Head, ci.Height)
 	d.incoming <- Target{ChainInfo: *ci}
 	return nil
 }
@@ -145,6 +146,7 @@ func (d *Dispatcher) Start(syncingCtx context.Context) {
 			}
 			select {
 			case first := <-d.incoming:
+				log.Infof("dequeing %v %d", first.Head, first.Height)
 				ws = append(ws, first)
 				ws = append(ws, d.drainIncoming()...)
 			default:
@@ -169,10 +171,12 @@ func (d *Dispatcher) Start(syncingCtx context.Context) {
 			syncTarget, popped := d.workQueue.Pop()
 			if popped {
 				// Do work
+				log.Infof("processing %v %d", syncTarget.Head, syncTarget.Height)
 				syncErr := d.syncer.HandleNewTipSet(syncingCtx, &syncTarget.ChainInfo, d.catchup)
 				if err != nil {
 					log.Info("sync request could not complete: %s", err)
 				}
+				log.Infof("finished processing %v %d", syncTarget.Head, syncTarget.Height)
 				d.syncTargetCount++
 				d.registeredCb(syncTarget, syncErr)
 				follow, err := d.transitioner.MaybeTransitionToFollow(syncingCtx, d.catchup, d.workQueue.Len())
@@ -215,16 +219,20 @@ func (d *Dispatcher) RegisterCallback(cb func(Target, error)) {
 // WaiterForTarget returns a function that will block until the dispatcher
 // processes the given target and returns the error produced by that targer
 func (d *Dispatcher) WaiterForTarget(waitKey block.TipSetKey) func() error {
+	log.Infof("waiter for %v", waitKey)
 	processed := moresync.NewLatch(1)
 	var syncErr error
 	d.RegisterCallback(func(t Target, err error) {
+		log.Infof("callback with %v, %d", t.Head, t.Height)
 		if t.ChainInfo.Head.Equals(waitKey) {
+			log.Infof("matched!")
 			syncErr = err
 			processed.Done()
 		}
 	})
 	return func() error {
 		processed.Wait()
+		log.Infof("finished waiting for %v", waitKey)
 		return syncErr
 	}
 }

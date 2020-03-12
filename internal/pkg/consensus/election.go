@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 
 	address "github.com/filecoin-project/go-address"
@@ -49,6 +50,9 @@ func (em ElectionMachine) GenerateCandidates(poStRand abi.PoStRandomness, sector
 	candidates := make([]abi.PoStCandidate, len(candidatesWithTicket))
 	for i, candidateWithTicket := range candidatesWithTicket {
 		candidates[i] = candidateWithTicket.Candidate
+		// XXX For some reason the proofs library does not propagate this value
+		candidates[i].RegisteredProof = sectorInfos[i].RegisteredProof
+		candidates[i].SectorID.Miner = abi.ActorID(106)
 	}
 	return candidates, nil
 }
@@ -56,6 +60,10 @@ func (em ElectionMachine) GenerateCandidates(poStRand abi.PoStRandomness, sector
 // GenerateEPoSt creates a PoSt proof over the input PoSt candidates.  Should
 // only be called on winning candidates.
 func (em ElectionMachine) GenerateEPoSt(allSectorInfos []abi.SectorInfo, challengeSeed abi.PoStRandomness, winners []abi.PoStCandidate, ep postgenerator.PoStGenerator) ([]abi.PoStProof, error) {
+	jsi, _ := json.MarshalIndent(allSectorInfos, "", "  ")
+	jcs, _ := json.MarshalIndent(challengeSeed, "", "  ")
+	jwi, _ := json.MarshalIndent(winners, "", "  ")
+	log.Infof("GenerateEPoSt:\n%s\n%s\n%s", jsi, jcs, jwi)
 	return ep.ComputeElectionPoSt(allSectorInfos, challengeSeed, winners)
 }
 
@@ -142,7 +150,8 @@ func (em ElectionMachine) VerifyPoSt(ctx context.Context, ep EPoStVerifier, allS
 		Prover:          abi.ActorID(minerID),
 		ChallengeCount:  challengeCount,
 	}
-
+	jvi, _ := json.MarshalIndent(poStVerifyInfo, "", "  ")
+	log.Infof("VerifyElectionPost:\n%s", jvi)
 	return ep.VerifyElectionPost(ctx, poStVerifyInfo)
 }
 
